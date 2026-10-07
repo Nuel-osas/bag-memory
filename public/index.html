@@ -65,6 +65,9 @@
   .logins button { margin-top: 0; }
   #tgLogin { display: flex; justify-content: center; min-height: 40px; }
   .px { font: 12px var(--mono); color: var(--muted); }
+  .wallets { display: grid; gap: 6px; }
+  .wallets button.wallet { margin-top: 0; display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; }
+  .wallets img { width: 22px; height: 22px; border-radius: 5px; }
 </style>
 </head>
 <body>
@@ -129,21 +132,55 @@ function renderSignIn() {
   $("#walletBtn").onclick = walletLogin;
 }
 
-// Sui wallet via the Wallet Standard: connect, sign one message, server verifies the signature.
+// Sui wallets via the Wallet Standard (Slush, Nightly, Suiet, Phantom, Backpack, OKX, ...).
+// The registry is created at page load so wallets that register late (on "app-ready") are still caught.
+let registry = null;
+const registryReady = import("https://esm.sh/@wallet-standard/app@1.1.0")
+  .then(({ getWallets }) => { registry = getWallets(); registry.on("register", () => $("#walletList") && renderWalletList()); })
+  .catch(() => {});
+
+const isSuiWallet = (w) =>
+  (w.chains || []).some((c) => c.startsWith("sui:")) || w.features["sui:signPersonalMessage"] || w.features["sui:signMessage"];
+const suiWallets = () => {
+  const seen = new Set();
+  return (registry?.get() ?? []).filter((w) => isSuiWallet(w) && w.features["standard:connect"] && !seen.has(w.name) && seen.add(w.name));
+};
+
 async function walletLogin() {
+  $("#loginErr").textContent = "";
+  await registryReady;
+  if (!$("#walletList")) $("#walletBtn").insertAdjacentHTML("afterend", `<div id="walletList" class="wallets"></div>`);
+  renderWalletList();
+}
+
+function renderWalletList() {
+  const ws = suiWallets();
+  $("#walletList").innerHTML = ws.length
+    ? ws.map((w, i) => `<button type="button" class="ghost wallet" data-i="${i}"><img src="${esc(w.icon)}" alt="" />${esc(w.name)}</button>`).join("")
+    : `<p class="fine">No Sui wallet found in this browser. Install <a href="https://slush.app" target="_blank">Slush</a> or <a href="https://nightly.app" target="_blank">Nightly</a> and refresh, or use Telegram.</p>`;
+  $("#walletList").querySelectorAll("button.wallet").forEach((b) => (b.onclick = () => signInWith(ws[Number(b.dataset.i)], b)));
+}
+
+async function signInWith(w, btn) {
   const err = $("#loginErr");
   err.textContent = "";
+  btn.disabled = true;
   try {
-    const { getWallets } = await import("https://esm.sh/@wallet-standard/app@1.1.0");
-    const wallets = getWallets().get().filter((w) => w.features["sui:signPersonalMessage"]);
-    if (!wallets.length) throw new Error("No Sui wallet found in this browser. Install Slush (slush.app) or use Telegram.");
-    const w = wallets[0];
     const { accounts } = await w.features["standard:connect"].connect();
-    const account = accounts[0];
+    const account = accounts.find((a) => (a.chains || []).some((c) => c.startsWith("sui:"))) ?? accounts[0];
+    if (!account) throw new Error(`${w.name} returned no account. Unlock it and try again.`);
     const message = `Sign in to Bag Memory\nAddress: ${account.address}\nIssued: ${new Date().toISOString()}`;
-    const { signature } = await w.features["sui:signPersonalMessage"].signPersonalMessage({ message: new TextEncoder().encode(message), account });
+    const bytes = new TextEncoder().encode(message);
+    // Newer wallets expose sui:signPersonalMessage; older ones only the deprecated sui:signMessage. Same signature format.
+    const signer = w.features["sui:signPersonalMessage"]?.signPersonalMessage ?? w.features["sui:signMessage"]?.signMessage;
+    if (!signer) throw new Error(`${w.name} can't sign messages.`);
+    const { signature } = await signer({ message: bytes, account });
     signedIn(await api("auth", { wallet: { address: account.address, message, signature } }));
-  } catch (e) { err.textContent = e.message; }
+  } catch (e) {
+    err.textContent = /reject|denied|cancel/i.test(e?.message ?? "") ? "Signature request was rejected." : e?.message ?? String(e);
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // ---------- chat ----------
