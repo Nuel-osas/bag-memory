@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Bag Memory</title>
+<meta name="description" content="A crypto trading journal that remembers your trades, your reasons and your own rules, and holds you to them. Memory on Walrus." />
+<style>
+  :root {
+    --bg: #f3f5f8; --panel: #fff; --ink: #0f1720; --muted: #5d6875; --line: #e1e6ec;
+    --accent: #0f766e; --accent-soft: #dff3f0; --good: #15803d; --good-soft: #e3f6e9; --warn: #a16207;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif; }
+  .wrap { max-width: 760px; margin: 0 auto; height: 100%; display: flex; flex-direction: column; padding: 0 16px; }
+  header { display: flex; align-items: center; gap: 10px; padding: 14px 0; flex-wrap: wrap; }
+  header h1 { font-size: 18px; margin: 0; }
+  header .who { color: var(--muted); font-size: 14px; }
+  header .sp { flex: 1; }
+  button { font: 600 14px inherit; font-family: inherit; border: 0; border-radius: 8px; padding: 8px 12px; background: var(--accent); color: #fff; cursor: pointer; }
+  button.ghost { background: var(--panel); color: var(--ink); border: 1px solid var(--line); }
+  button:disabled { opacity: .55; cursor: wait; }
+  input { font: inherit; border: 1px solid var(--line); border-radius: 10px; padding: 11px 13px; width: 100%; background: #fff; color: var(--ink); }
+  input:focus { outline: 2px solid var(--accent); border-color: transparent; }
+  .toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; padding: 6px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; user-select: none; }
+  .toggle .dot { width: 9px; height: 9px; border-radius: 50%; background: #b8c0ca; }
+  .toggle.on { border-color: #b7e4c4; background: var(--good-soft); color: var(--good); }
+  .toggle.on .dot { background: var(--good); }
+  #chat { flex: 1; overflow-y: auto; padding: 8px 2px 16px; }
+  .msg { margin: 12px 0; display: flex; flex-direction: column; }
+  .msg.user { align-items: flex-end; }
+  .bubble { max-width: 85%; padding: 10px 14px; border-radius: 14px; white-space: pre-wrap; word-wrap: break-word; background: var(--panel); border: 1px solid var(--line); }
+  .msg.user .bubble { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .meta { font: 12px var(--mono); color: var(--muted); margin-top: 4px; max-width: 85%; }
+  .chips { display: flex; flex-wrap: wrap; gap: 5px; justify-content: flex-end; margin-top: 5px; max-width: 85%; }
+  .chip { font-size: 12px; padding: 3px 9px; border-radius: 999px; background: var(--good-soft); color: var(--good); }
+  .chip.pending { background: #eef1f4; color: var(--muted); }
+  details.used { margin-top: 5px; max-width: 85%; font-size: 13px; color: var(--muted); }
+  details.used summary { cursor: pointer; }
+  details.used li { margin: 2px 0; }
+  .note { font-size: 13px; color: var(--muted); text-align: center; padding: 30px 10px; }
+  form.composer { display: flex; gap: 8px; padding: 12px 0 18px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 24px; margin: 8vh auto 0; max-width: 420px; width: 100%; }
+  .card h2 { margin: 0 0 4px; font-size: 22px; }
+  .card p { color: var(--muted); font-size: 14px; margin: 0 0 16px; }
+  .card label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 4px; }
+  .card button { width: 100%; margin-top: 18px; padding: 11px; }
+  .fine { font-size: 12px; color: var(--muted); margin-top: 14px; }
+  .fine a { color: var(--muted); }
+  #drawer { position: fixed; inset: 0; background: rgba(15,23,32,.35); display: none; }
+  #drawer.open { display: block; }
+  #drawer .panel { position: absolute; right: 0; top: 0; bottom: 0; width: min(420px, 100%); background: var(--panel); padding: 18px; overflow-y: auto; }
+  #drawer h3 { margin: 0 0 4px; }
+  #drawer ol { padding-left: 20px; }
+  #drawer li { margin: 6px 0; }
+  #drawer .when { font: 11px var(--mono); color: var(--muted); }
+  .spin { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--accent-soft); border-top-color: var(--accent); border-radius: 50%; animation: s .8s linear infinite; vertical-align: -1px; }
+  @keyframes s { to { transform: rotate(360deg); } }
+</style>
+<style>
+  .logins { display: grid; gap: 10px; margin-top: 18px; }
+  .logins .or { text-align: center; font-size: 12px; color: var(--muted); }
+  .logins button { margin-top: 0; }
+  #tgLogin { display: flex; justify-content: center; min-height: 40px; }
+  .px { font: 12px var(--mono); color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+
+<div id="drawer"><div class="panel">
+  <div style="display:flex;justify-content:space-between;align-items:center"><h3>What I remember about you</h3><button class="ghost" id="closeDrawer">Close</button></div>
+  <p class="fine" style="margin-top:4px">Each line is a separate Seal-encrypted blob on Walrus (testnet), in your own memory namespace. Telegram and web share it when you log in with Telegram.</p>
+  <div id="memList"></div>
+</div></div>
+
+<script type="module">
+const $ = (s, el = document) => el.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const store = {
+  get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  del(k) { try { localStorage.removeItem(k); } catch {} },
+};
+let session = store.get("bag.session");   // { token, name, via }
+let memoryOn = store.get("bag.memory") ?? true;
+let history = [];
+let cfg = { bot: null };
+
+async function api(path, body = {}) {
+  const r = await fetch("/api/" + path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: session?.token, ...body }) });
+  const j = await r.json().catch(() => ({ error: r.statusText }));
+  if (r.status === 400 && /not signed in/.test(j.error)) { signOut(); throw new Error("Session expired, sign in again."); }
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+function signOut() { store.del("bag.session"); session = null; renderSignIn(); }
+function signedIn(s) { session = s; store.set("bag.session", s); renderChat(); }
+
+// ---------- sign in ----------
+function renderSignIn() {
+  $("#app").innerHTML = `
+    <div class="card">
+      <h2>Bag Memory</h2>
+      <p>A trading journal that remembers your trades, your reasons and your own rules. Next time you're about to FOMO, it reminds you what you told it.</p>
+      <div class="logins">
+        ${cfg.bot ? `<a href="https://t.me/${esc(cfg.bot)}" target="_blank"><button type="button" style="width:100%">Open in Telegram (no login)</button></a><div class="or">or use it here, with the same memory</div><div id="tgLogin"></div>` : ""}
+        <button type="button" class="ghost" id="walletBtn">Connect Sui wallet</button>
+        <div class="fine" id="loginErr"></div>
+      </div>
+      <p class="fine">Log in with Telegram to share memory with the Telegram bot. Your journal is kept as Seal-encrypted memories on <a href="https://docs.wal.app/walrus-memory" target="_blank">Walrus Memory</a>. Never share private keys or seed phrases. Not financial advice.</p>
+    </div>`;
+  if (cfg.bot) {
+    window.onTelegramAuth = async (user) => {
+      try { signedIn(await api("auth", { telegram: Object.fromEntries(Object.entries(user).map(([k, v]) => [k, String(v)])) })); }
+      catch (e) { $("#loginErr").textContent = e.message; }
+    };
+    const s = document.createElement("script");
+    s.async = true;
+    s.src = "https://telegram.org/js/telegram-widget.js?22";
+    s.setAttribute("data-telegram-login", cfg.bot);
+    s.setAttribute("data-size", "large");
+    s.setAttribute("data-onauth", "onTelegramAuth(user)");
+    s.setAttribute("data-request-access", "write");
+    $("#tgLogin").append(s);
+  }
+  $("#walletBtn").onclick = walletLogin;
+}
+
+// Sui wallet via the Wallet Standard: connect, sign one message, server verifies the signature.
+async function walletLogin() {
+  const err = $("#loginErr");
+  err.textContent = "";
+  try {
+    const { getWallets } = await import("https://esm.sh/@wallet-standard/app@1.1.0");
+    const wallets = getWallets().get().filter((w) => w.features["sui:signPersonalMessage"]);
+    if (!wallets.length) throw new Error("No Sui wallet found in this browser. Install Slush (slush.app) or use Telegram.");
+    const w = wallets[0];
+    const { accounts } = await w.features["standard:connect"].connect();
+    const account = accounts[0];
+    const message = `Sign in to Bag Memory\nAddress: ${account.address}\nIssued: ${new Date().toISOString()}`;
+    const { signature } = await w.features["sui:signPersonalMessage"].signPersonalMessage({ message: new TextEncoder().encode(message), account });
+    signedIn(await api("auth", { wallet: { address: account.address, message, signature } }));
+  } catch (e) { err.textContent = e.message; }
+}
+
+// ---------- chat ----------
+function renderChat() {
+  history = [];
+  $("#app").innerHTML = `
+    <header>
+      <h1>Bag Memory</h1><span class="who">· ${esc(session.name)} (${esc(session.via)})</span>
+      <span class="sp"></span>
+      <span class="toggle ${memoryOn ? "on" : ""}" id="mem" title="Turn memory off to see the same bot without Walrus Memory"><span class="dot"></span><span>Memory ${memoryOn ? "on" : "off"}</span></span>
+      <button class="ghost" id="recallBtn">What do you remember?</button>
+      <button class="ghost" id="outBtn">Sign out</button>
+    </header>
+    <div id="chat"><p class="note">${memoryOn ? "Log a trade, a rule or a lesson. Or ask about something you're tempted to buy." : "Memory is off: same bot, no recall, nothing saved."}</p></div>
+    <form class="composer" id="composer">
+      <input id="msg" placeholder="Bought 300 SUI at $1.05, target $1.60, stop $0.85..." autocomplete="off" />
+      <button id="send">Send</button>
+    </form>`;
+  $("#mem").onclick = () => { memoryOn = !memoryOn; store.set("bag.memory", memoryOn); renderChat(); };
+  $("#outBtn").onclick = signOut;
+  $("#recallBtn").onclick = openDrawer;
+  $("#composer").onsubmit = (e) => { e.preventDefault(); send(); };
+  $("#msg").focus();
+  if (memoryOn) greet();
+}
+
+async function greet() {
+  const b = add("bot", `<div class="bubble"><span class="spin"></span> checking your journal...</div>`);
+  try {
+    const r = await api("welcome");
+    if (r.text) b.innerHTML = `<div class="bubble">${esc(r.text)}</div><div class="meta">welcome back from ${r.memories} memories on Walrus</div>`;
+    else b.remove();
+  } catch { b.remove(); }
+}
+
+function add(cls, html) {
+  $("#chat .note")?.remove();
+  const d = document.createElement("div");
+  d.className = "msg " + cls;
+  d.innerHTML = html;
+  $("#chat").append(d);
+  $("#chat").scrollTop = $("#chat").scrollHeight;
+  return d;
+}
+
+async function send() {
+  const text = $("#msg").value.trim();
+  if (!text) return;
+  $("#msg").value = "";
+  $("#send").disabled = true;
+  const u = add("user", `<div class="bubble">${esc(text)}</div>`);
+  const b = add("bot", `<div class="bubble"><span class="spin"></span>${memoryOn ? " checking your journal..." : ""}</div>`);
+  try {
+    const r = await api("chat", { message: text, history, memory: memoryOn });
+    history.push({ role: "user", content: text }, { role: "assistant", content: r.answer });
+    const used = memoryOn && r.memories.length
+      ? `<details class="used"><summary>recalled ${r.memories.length} ${r.memories.length === 1 ? "memory" : "memories"} from Walrus</summary><ul>${r.memories.map((m) => `<li>${esc(m.text)} <span class="when">${m.distance.toFixed(2)}</span></li>`).join("")}</ul></details>`
+      : "";
+    const px = Object.entries(r.prices || {}).map(([k, v]) => `${k} $${v}`).join(" · ");
+    b.innerHTML = `<div class="bubble">${esc(r.answer)}</div>${used}<div class="meta">${esc(r.model)} · ${memoryOn ? `recall ${(r.recallMs / 1000).toFixed(1)}s · ` : "memory off · "}answer ${(r.llmMs / 1000).toFixed(1)}s${px ? ` · <span class="px">${esc(px)}</span>` : ""}</div>`;
+    if (memoryOn) learn(u, text);
+  } catch (e) {
+    b.innerHTML = `<div class="bubble">Something went wrong: ${esc(e.message)}</div>`;
+  } finally {
+    $("#send").disabled = false;
+    $("#msg").focus();
+    $("#chat").scrollTop = $("#chat").scrollHeight;
+  }
+}
+
+async function learn(userEl, text) {
+  const chips = document.createElement("div");
+  chips.className = "chips";
+  chips.innerHTML = `<span class="chip pending">noting...</span>`;
+  userEl.append(chips);
+  try {
+    const r = await api("learn", { message: text });
+    chips.innerHTML = r.facts.map((f) => `<span class="chip">noted: ${esc(f)}</span>`).join("");
+  } catch (e) { chips.innerHTML = `<span class="chip pending">couldn't save: ${esc(e.message)}</span>`; }
+}
+
+async function openDrawer() {
+  $("#drawer").classList.add("open");
+  $("#memList").innerHTML = `<p class="fine"><span class="spin"></span> recalling from Walrus...</p>`;
+  try {
+    const r = await api("memories");
+    $("#memList").innerHTML = r.memories.length
+      ? `<p class="fine">${r.memories.length} memories</p><ol>${r.memories.map((m) => `<li>${esc(m.text)}<div class="when">${m.created_at ? new Date(m.created_at).toLocaleString() : ""}</div></li>`).join("")}</ol>`
+      : `<p class="fine">Nothing yet. Log a trade, a rule or a lesson.</p>`;
+  } catch (e) { $("#memList").innerHTML = `<p class="fine">Couldn't load: ${esc(e.message)}</p>`; }
+}
+$("#closeDrawer").onclick = () => $("#drawer").classList.remove("open");
+$("#drawer").onclick = (e) => { if (e.target.id === "drawer") $("#drawer").classList.remove("open"); };
+
+try { cfg = await (await fetch("/api/config", { method: "GET" })).json(); } catch {}
+session ? renderChat() : renderSignIn();
+</script>
+</body>
+</html>
