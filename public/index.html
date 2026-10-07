@@ -66,6 +66,11 @@
   #tgLogin { display: flex; justify-content: center; min-height: 40px; }
   .px { font: 12px var(--mono); color: var(--muted); }
   .wallets { display: grid; gap: 6px; }
+  .guide { display: grid; gap: 6px; padding: 0 0 16px; margin-top: -8px; }
+  .guide > div { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .guide .step { font: 600 11px var(--mono); color: var(--accent); text-transform: uppercase; min-width: 52px; }
+  .guide .ex { font: 500 12px inherit; font-family: inherit; padding: 4px 10px; border-radius: 999px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); text-align: left; white-space: normal; }
+  .guide .ex:hover { border-color: var(--accent); color: var(--accent); }
   .wallets button.wallet { margin-top: 0; display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; }
   .wallets img { width: 22px; height: 22px; border-radius: 5px; }
 </style>
@@ -184,6 +189,18 @@ async function signInWith(w, btn) {
 }
 
 // ---------- chat ----------
+// Example messages: tapping one fills the box so people can edit it to their real trades before sending.
+const LOG = [
+  "Bought 500 SUI at $1.05, I think Walrus adoption pushes it up. Target $1.60, stop $0.85.",
+  "My rule: never more than 5% of my portfolio in memecoins.",
+  "Another rule: I don't buy anything that pumped more than 50% in a day.",
+  "Lost 40% on PEPE in August because I chased a green candle. Lesson: wait for a pullback.",
+];
+const TEST = [
+  "Thinking of putting 20% of my bag into BONK, it's up 60% today",
+  "How's my SUI position doing?",
+  "What are my rules again?",
+];
 function renderChat() {
   history = [];
   $("#app").innerHTML = `
@@ -194,11 +211,18 @@ function renderChat() {
       <button class="ghost" id="recallBtn">What do you remember?</button>
       <button class="ghost" id="outBtn">Sign out</button>
     </header>
-    <div id="chat"><p class="note">${memoryOn ? "Log a trade, a rule or a lesson. Or ask about something you're tempted to buy." : "Memory is off: same bot, no recall, nothing saved."}</p></div>
+    <div id="chat"><p class="note">${memoryOn
+      ? "How it works: 1. tell me your trades, rules and lessons (each becomes a memory on Walrus). 2. later, ask about something you're tempted to buy, and I'll hold you to your own rules. Tap an example below to start."
+      : "Memory is off: same bot, no recall, nothing saved. Ask the same question with memory on to compare."}</p></div>
     <form class="composer" id="composer">
       <input id="msg" placeholder="Bought 300 SUI at $1.05, target $1.60, stop $0.85..." autocomplete="off" />
       <button id="send">Send</button>
-    </form>`;
+    </form>
+    <div class="guide">
+      <div><span class="step">1 · log</span>${LOG.map((t) => `<button type="button" class="ex">${esc(t)}</button>`).join("")}</div>
+      <div><span class="step">2 · test</span>${TEST.map((t) => `<button type="button" class="ex">${esc(t)}</button>`).join("")}</div>
+    </div>`;
+  document.querySelectorAll(".guide .ex").forEach((b) => (b.onclick = () => { $("#msg").value = b.textContent; $("#msg").focus(); }));
   $("#mem").onclick = () => { memoryOn = !memoryOn; store.set("bag.memory", memoryOn); renderChat(); };
   $("#outBtn").onclick = signOut;
   $("#recallBtn").onclick = openDrawer;
@@ -212,7 +236,7 @@ async function greet() {
   try {
     const r = await api("welcome");
     if (r.text) b.innerHTML = `<div class="bubble">${esc(r.text)}</div><div class="meta">welcome back from ${r.memories} memories on Walrus</div>`;
-    else b.remove();
+    else b.innerHTML = `<div class="bubble">Hey! I'm your trading journal. I don't know anything about you yet.\n\nStart by telling me a trade you're in (coin, entry price, why, target, stop) and one rule you try to follow. Or tap a "1 · log" example below and edit it.\n\nNext time you open me, I'll greet you with your positions and P&L.</div>`;
   } catch { b.remove(); }
 }
 
